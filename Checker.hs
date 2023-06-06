@@ -109,10 +109,9 @@ getVarNames = map fst
 
 checkDuplicatedNames :: Program -> Checked
 checkDuplicatedNames (Program defs _) =
-  let functionNames = getDuplicates (getFunNames defs)
-      variableNames = getDuplicates (getFunNames defs)  -- WATCH OUT
-      allNames = functionNames ++ variableNames
-      duplicatedNames = getDuplicates allNames
+  let dupFunctionNames = getDuplicates (getFunNames defs)
+      dupVariableNames = concatMap (getDuplicates . getFunArgs) defs
+      duplicatedNames = dupFunctionNames ++ dupVariableNames
   in if null duplicatedNames
     then Ok
     else Wrong (map Duplicated duplicatedNames)

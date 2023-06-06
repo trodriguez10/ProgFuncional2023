@@ -82,7 +82,6 @@ getSigParams (name, Sig params _) = params
 getFunArgs :: FunDef -> [Name]
 getFunArgs (FunDef _ args _) = args
 
-
 -- Función auxiliar para verificar si hay elementos duplicados en una lista
 -- Nub function: https://hoogle.haskell.org/?hoogle=nub
 hasDuplicates :: Eq a => [a] -> Bool
@@ -105,6 +104,7 @@ getVarNames :: [TypedVar] -> [Name]
 getVarNames = map fst
 
 -- REFERENCE https://hoogle.haskell.org/
+
 -- 4.1 Duplicated Declarations
 
 checkDuplicatedNames :: Program -> Checked
@@ -115,6 +115,7 @@ checkDuplicatedNames (Program defs _) =
   in if null duplicatedNames
     then Ok
     else Wrong (map Duplicated duplicatedNames)
+
 
 -- 4.2 Number of parameters
 -- Defs => Typed Fun => Sig => [Type] LENGTH
@@ -135,7 +136,44 @@ checkFunParams (FunDef typedFun args _) =
      then [ArgNumDef (getFunTypeName typedFun) numSigParams numFunArgs]
      else []
 
+
 -- 4.3 Non Declared Names
+-- Defs -> FunDef -> [Name]
+
+checkNonDeclaredNames :: Program -> Checked
+checkNonDeclaredNames (Program defs expr) =
+  let declaredFunNames = getFunNames defs
+      undefinedNamesInFuns = concatMap (getUndefinedNamesInFun declaredFunNames) defs 
+      mainUsedNames = getUsedNames expr
+      undefinedMainNames = filter (`notElem` declaredFunNames) mainUsedNames
+      undefinedNames = undefinedNamesInFuns ++ undefinedMainNames
+  in if null undefinedNames
+     then Ok
+     else Wrong (map Undefined undefinedNames)
+
+getUndefinedNamesInFun :: [Name] -> FunDef -> [Name]
+getUndefinedNamesInFun declaredFunNames (FunDef _ funVarNames expr) = 
+  let usedNames = getUsedNames expr
+      availableNames = declaredFunNames ++ funVarNames
+  in filter (`notElem` availableNames) usedNames
+
+getUsedVarNames :: Expr -> [Name]
+getUsedVarNames (Var name) = [name]
+getUsedVarNames (IntLit  _) = []
+getUsedVarNames (BoolLit _) = []
+getUsedVarNames (Infix _ expr expr') = getUsedVarNames expr ++ getUsedVarNames expr'
+getUsedVarNames (If expr expr' expr'') = getUsedVarNames expr ++ getUsedVarNames expr' ++ getUsedVarNames expr''
+getUsedVarNames (Let (name, _) bindExpr bodyExpr) = getUsedVarNames bindExpr ++ filter (/= name) (getUsedVarNames bodyExpr)
+getUsedVarNames (App name exprs) = [] ++ concatMap getUsedVarNames exprs
+
+getUsedFunNames :: Expr -> [Name]
+getUsedFunNames (Var name) = []
+getUsedFunNames (IntLit  _) = []
+getUsedFunNames (BoolLit _) = []
+getUsedFunNames (Infix _ expr expr') = getUsedFunNames expr ++ getUsedFunNames expr'
+getUsedFunNames (If expr expr' expr'') = getUsedFunNames expr ++ getUsedFunNames expr' ++ getUsedFunNames expr''
+getUsedFunNames (Let _ bindExpr bodyExpr) = getUsedFunNames bindExpr ++ getUsedFunNames bodyExpr
+getUsedFunNames (App name exprs) = [name] ++ concatMap getUsedFunNames exprs
 
 getUsedNames :: Expr -> [Name]
 getUsedNames (Var name) = [name]
@@ -144,19 +182,7 @@ getUsedNames (BoolLit _) = []
 getUsedNames (Infix _ expr expr') = getUsedNames expr ++ getUsedNames expr'
 getUsedNames (If expr expr' expr'') = getUsedNames expr ++ getUsedNames expr' ++ getUsedNames expr''
 getUsedNames (Let (name, _) bindExpr bodyExpr) = getUsedNames bindExpr ++ filter (/= name) (getUsedNames bodyExpr)
-getUsedNames (App _ exprs) = concatMap getUsedNames exprs
-
--- Defs -> FunDef -> [Name]
-checkNonDeclaredNames :: Program -> Checked
-checkNonDeclaredNames (Program defs expr) =
-  let funcNames = getFunNames defs
-      varNames = concatMap getFunArgs defs
-      allNames = funcNames ++ varNames
-      usedNames = getUsedNames expr
-      undefinedNames = filter (`notElem` allNames) usedNames
-  in if null undefinedNames
-     then Ok
-     else Wrong (map Undefined undefinedNames)
+getUsedNames (App name exprs) = [name] ++ concatMap getUsedNames exprs
 
 
 -- 4.4 Type CHeck
@@ -234,7 +260,7 @@ funDef3 :: FunDef
 funDef3 = FunDef myFunction3 [] (BoolLit True)
 
 program :: Program
-program = Program [funDef1, funDef2, funDef3] (If (BoolLit True) (IntLit 5) (Var "x"))
+program = Program [funDef1, funDef2, funDef3] (If (BoolLit False) (IntLit 5) (App "func1" [IntLit 3, BoolLit False]))
 
 -- Función para mostrar el resultado Checked
 showChecked :: Checked -> String

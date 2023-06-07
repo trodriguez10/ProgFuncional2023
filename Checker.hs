@@ -100,6 +100,13 @@ isWrong _  = False
 getVarNames :: [TypedVar] -> [Name]
 getVarNames = map fst
 
+isArithmeticOp :: Op -> Bool
+isArithmeticOp Add = True
+isArithmeticOp Sub = True
+isArithmeticOp Mult = True
+isArithmeticOp Div = True
+isArithmeticOp _ = False
+
 -- REFERENCE https://hoogle.haskell.org/
 
 -- 4.1 Duplicated Declarations
@@ -231,34 +238,20 @@ checkValidExpr (If condExpr expr expr') = checkIf condExpr expr expr'
 checkValidExpr (Let (name, sig) expr expr') = undefined
 checkValidExpr (App name xs) = undefined
 
--- PENDIENTE MEJORAR PARAA SIMPLIFICAR EL COPY PASTE
 checkInfix :: Op -> Expr -> Expr -> [Error]
-checkInfix Add expr expr' = 
-  let expr1Errors = checkValidExpr expr
-      expr2Errors = checkValidExpr expr'
-      opError = if isIntegerExpr expr && isIntegerExpr expr' then [] else (if isIntegerExpr expr then [Expected TyInt TyBool] else (if isIntegerExpr expr' then [Expected TyInt TyBool] else [Expected TyInt TyBool, Expected TyInt TyBool]))
-  in opError ++ expr1Errors ++ expr2Errors
-checkInfix Sub expr expr' = 
-  let expr1Errors = checkValidExpr expr
-      expr2Errors = checkValidExpr expr'
-      opError = if isIntegerExpr expr && isIntegerExpr expr' then [] else (if isIntegerExpr expr then [Expected TyInt TyBool] else (if isIntegerExpr expr' then [Expected TyInt TyBool] else [Expected TyInt TyBool, Expected TyInt TyBool]))
-  in opError ++ expr1Errors ++ expr2Errors
-checkInfix Mult expr expr' = 
-  let expr1Errors = checkValidExpr expr
-      expr2Errors = checkValidExpr expr'
-      opError = if isIntegerExpr expr && isIntegerExpr expr' then [] else (if isIntegerExpr expr then [Expected TyInt TyBool] else (if isIntegerExpr expr' then [Expected TyInt TyBool] else [Expected TyInt TyBool, Expected TyInt TyBool]))
-  in opError ++ expr1Errors ++ expr2Errors
-checkInfix Div expr expr' = 
-  let expr1Errors = checkValidExpr expr
-      expr2Errors = checkValidExpr expr'
-      opError = if isIntegerExpr expr && isIntegerExpr expr' then [] else (if isIntegerExpr expr then [Expected TyInt TyBool] else (if isIntegerExpr expr' then [Expected TyInt TyBool] else [Expected TyInt TyBool, Expected TyInt TyBool]))
-  in opError ++ expr1Errors ++ expr2Errors
-checkInfix _ expr expr' = 
-  let expr1Errors = checkValidExpr expr
-      expr2Errors = checkValidExpr expr'
-      opError = checkSameTypeExpr expr expr'
-  in opError ++ expr1Errors ++ expr2Errors
-
+checkInfix op expr expr'
+  | isArithmetic == True =
+    let expr1Errors = checkValidExpr expr
+        expr2Errors = checkValidExpr expr'
+        opError = if isIntegerExpr expr && isIntegerExpr expr' then [] else (if isIntegerExpr expr then [Expected TyInt TyBool] else (if isIntegerExpr expr' then [Expected TyInt TyBool] else [Expected TyInt TyBool, Expected TyInt TyBool]))
+    in opError ++ expr1Errors ++ expr2Errors
+  | otherwise =
+    let expr1Errors = checkValidExpr expr
+        expr2Errors = checkValidExpr expr'
+        opError = checkSameTypeExpr expr expr'
+    in opError ++ expr1Errors ++ expr2Errors
+  where isArithmetic = isArithmeticOp op
+  
 checkIf :: Expr -> Expr -> Expr -> [Error]
 checkIf condExpr expr expr' = 
   let expr1Errors = checkValidExpr condExpr
@@ -287,7 +280,10 @@ checkProgram program =
       case checkParamNum program of
         Ok ->
           case checkNonDeclaredNames program of
-            Ok -> Ok
+            Ok -> 
+              case checkTypes program of
+                Ok -> Ok
+                Wrong errors -> Wrong (getErrors (checkTypes program))
             Wrong errors -> Wrong (getErrors (checkNonDeclaredNames program))
         Wrong errors -> Wrong (getErrors (checkParamNum program))
     Wrong errors -> Wrong (getErrors (checkDuplicatedNames program))
@@ -323,7 +319,7 @@ program :: Program
 program = Program [funDef1, funDef2, funDef3] (If (BoolLit False) (IntLit 5) (App "func1" [IntLit 3, BoolLit False]))
 
 program2 :: Program
-program2 = Program [] (If (BoolLit False) (IntLit 4) (IntLit 4))
+program2 = Program [] (If (BoolLit False) (Infix Add (IntLit 2) (IntLit 3)) (IntLit 4))
 
 -- Función para mostrar el resultado Checked
 showChecked :: Checked -> String
@@ -343,8 +339,8 @@ testCheckNonDeclared = putStrLn (showChecked (checkNonDeclaredNames program))
 testCheckTypes :: IO ()
 testCheckTypes = putStrLn (showChecked (checkTypes program2))
 
-testCheckProgram :: IO ()
-testCheckProgram = putStrLn (showChecked (checkProgram program))
+testCheckProgram :: Program -> IO ()
+testCheckProgram p = putStrLn (showChecked (checkProgram p))
 
 -- tests fallan cunado declaro dos varaibles ( FALTA IMPLEMENETAR ESO )
 

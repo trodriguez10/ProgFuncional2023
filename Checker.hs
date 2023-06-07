@@ -254,7 +254,7 @@ funDef1 :: FunDef
 funDef1 = FunDef myFunction1 ["x", "y"] (Var "x")
 
 funDef2 :: FunDef
-funDef2 = FunDef myFunction2 ["x", "y", "z"] (If (BoolLit True) (IntLit 5) (Var "x"))-- ?
+funDef2 = FunDef myFunction2 ["x", "y", "z"] (If (BoolLit True) (IntLit 5) (Var "func1"))-- ?
 
 funDef3 :: FunDef
 funDef3 = FunDef myFunction3 [] (BoolLit True)

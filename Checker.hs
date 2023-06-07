@@ -17,9 +17,6 @@ import Syntax
 import Data.List
 import Data.Maybe
 
--- Extra imports
-import Data.Typeable
-
 -- CHECKER
 
 data Checked = Ok | Wrong [Error]
@@ -72,8 +69,8 @@ getSigTypes :: Sig -> [Type]
 getSigTypes (Sig types _) = types
 
 -- -- Función auxiliar para obtener el tipo de retorno de una signatura
--- getSigRetType :: Sig -> Type
--- getSigRetType (Sig _ retType) = retType
+getSigRetType :: Sig -> Type
+getSigRetType (Sig _ retType) = retType
 
 getSigParams :: TypedFun -> [Type]
 getSigParams (name, Sig params _) = params
@@ -140,6 +137,7 @@ checkFunParams (FunDef typedFun args _) =
 -- 4.3 Non Declared Names
 -- Defs -> FunDef -> [Name]
 
+-- ARREGLAR QUE NO DISTINGUE ENTRE FUNCIONES Y VARIABLES
 checkNonDeclaredNames :: Program -> Checked
 checkNonDeclaredNames (Program defs expr) =
   let declaredFunNames = getFunNames defs
@@ -186,30 +184,92 @@ getUsedNames (App name exprs) = [name] ++ concatMap getUsedNames exprs
 
 
 -- 4.4 Type CHeck
-
 -- SCOPE => ENV.
-
-typeCheck :: Expr -> Checked
-typeCheck = undefined
--- typeCheck (Var name) =
--- typeCheck (IntLit  integer) = if isInteger integer then Ok else Wrong [Expected TyInt TyBool]
--- typeCheck (BoolLit bool) = typeOf bool == typeOf True
--- typeCheck (Infix Op expr expr')
--- typeCheck (If Expr expr expr')
--- typeCheck (Let TypedVar expr expr')
--- typeCheck (App name xs) =
-
 
 checkTypes :: Program -> Checked
 checkTypes (Program defs expr) =
-  let funcNames = getFunNames defs
-      varNames = concatMap getFunArgs defs
-      allNames = funcNames ++ varNames
-      usedNames = getUsedNames expr
-      undefinedNames = filter (`notElem` allNames) usedNames
-  in if null undefinedNames
+  let defsErrors = concatMap checkValidFun defs
+      mainErrors = checkValidExpr expr
+      allErrors = defsErrors ++ mainErrors
+  in if null allErrors
      then Ok
-     else Wrong (map Undefined undefinedNames)
+     else Wrong allErrors
+
+checkValidFun :: FunDef -> [Error]
+checkValidFun (FunDef (name, sig) names expr) = 
+  let retTypeError = if isIntegerType (getSigRetType sig) == isIntegerExpr expr then [] else (if isIntegerType (getSigRetType sig) then [Expected TyInt TyBool] else [Expected TyBool TyInt])
+      exprErrors = checkValidExpr expr
+  in exprErrors ++ retTypeError
+
+isIntegerType :: Type -> Bool
+isIntegerType TyInt = True
+isIntegerType TyBool = False
+
+-- OJO CON EL OP, ESTA BIEN NO CONSIDERAR LOS EXPR??
+isIntegerExpr :: Expr -> Bool
+isIntegerExpr (Var name) = undefined
+isIntegerExpr (IntLit  _) = True
+isIntegerExpr (BoolLit _) = False
+isIntegerExpr (Infix op _ _) = isIntegerOp op
+isIntegerExpr (If _ expr _) = isIntegerExpr expr -- Asumimos que el tipo de retorno de un if es la primer expresion
+isIntegerExpr (Let (name, sig) expr expr') = undefined
+isIntegerExpr (App name xs) = undefined
+
+isIntegerOp :: Op -> Bool
+isIntegerOp Add = True
+isIntegerOp Sub = True
+isIntegerOp Mult = True  
+isIntegerOp Div = True  
+isIntegerOp _ = False
+
+checkValidExpr :: Expr -> [Error]
+checkValidExpr (Var name) = undefined
+checkValidExpr (IntLit _) = [] -- El parser no permite meter un Bool en un IntLit por definicion
+checkValidExpr (BoolLit _) = [] -- El parser no permite meter un Integer en un BoolLit por definicion
+checkValidExpr (Infix op expr expr') = checkInfix op expr expr'
+checkValidExpr (If condExpr expr expr') = checkIf condExpr expr expr'
+checkValidExpr (Let (name, sig) expr expr') = undefined
+checkValidExpr (App name xs) = undefined
+
+-- PENDIENTE MEJORAR PARAA SIMPLIFICAR EL COPY PASTE
+checkInfix :: Op -> Expr -> Expr -> [Error]
+checkInfix Add expr expr' = 
+  let expr1Errors = checkValidExpr expr
+      expr2Errors = checkValidExpr expr'
+      opError = if isIntegerExpr expr && isIntegerExpr expr' then [] else (if isIntegerExpr expr then [Expected TyInt TyBool] else (if isIntegerExpr expr' then [Expected TyInt TyBool] else [Expected TyInt TyBool, Expected TyInt TyBool]))
+  in opError ++ expr1Errors ++ expr2Errors
+checkInfix Sub expr expr' = 
+  let expr1Errors = checkValidExpr expr
+      expr2Errors = checkValidExpr expr'
+      opError = if isIntegerExpr expr && isIntegerExpr expr' then [] else (if isIntegerExpr expr then [Expected TyInt TyBool] else (if isIntegerExpr expr' then [Expected TyInt TyBool] else [Expected TyInt TyBool, Expected TyInt TyBool]))
+  in opError ++ expr1Errors ++ expr2Errors
+checkInfix Mult expr expr' = 
+  let expr1Errors = checkValidExpr expr
+      expr2Errors = checkValidExpr expr'
+      opError = if isIntegerExpr expr && isIntegerExpr expr' then [] else (if isIntegerExpr expr then [Expected TyInt TyBool] else (if isIntegerExpr expr' then [Expected TyInt TyBool] else [Expected TyInt TyBool, Expected TyInt TyBool]))
+  in opError ++ expr1Errors ++ expr2Errors
+checkInfix Div expr expr' = 
+  let expr1Errors = checkValidExpr expr
+      expr2Errors = checkValidExpr expr'
+      opError = if isIntegerExpr expr && isIntegerExpr expr' then [] else (if isIntegerExpr expr then [Expected TyInt TyBool] else (if isIntegerExpr expr' then [Expected TyInt TyBool] else [Expected TyInt TyBool, Expected TyInt TyBool]))
+  in opError ++ expr1Errors ++ expr2Errors
+checkInfix _ expr expr' = 
+  let expr1Errors = checkValidExpr expr
+      expr2Errors = checkValidExpr expr'
+      opError = checkSameTypeExpr expr expr'
+  in opError ++ expr1Errors ++ expr2Errors
+
+checkIf :: Expr -> Expr -> Expr -> [Error]
+checkIf condExpr expr expr' = 
+  let expr1Errors = checkValidExpr condExpr
+      condChecked = if isIntegerExpr condExpr then [Expected TyBool TyInt] else []
+      expr2Errors = checkValidExpr expr
+      expr3Errors = checkValidExpr expr'
+      matchError =  checkSameTypeExpr expr expr'
+  in expr1Errors ++ condChecked ++ expr2Errors ++ expr3Errors ++ matchError
+  
+checkSameTypeExpr :: Expr -> Expr -> [Error]
+checkSameTypeExpr expr expr' = if isIntegerExpr expr == isIntegerExpr expr' then [] else (if isIntegerExpr expr then [Expected TyInt TyBool] else [Expected TyBool TyInt])
 
 getErrorsList :: [Checked] -> [Error]
 getErrorsList [] = []
@@ -262,6 +322,9 @@ funDef3 = FunDef myFunction3 [] (BoolLit True)
 program :: Program
 program = Program [funDef1, funDef2, funDef3] (If (BoolLit False) (IntLit 5) (App "func1" [IntLit 3, BoolLit False]))
 
+program2 :: Program
+program2 = Program [] (If (BoolLit False) (IntLit 4) (IntLit 4))
+
 -- Función para mostrar el resultado Checked
 showChecked :: Checked -> String
 showChecked Ok = "Ok"
@@ -276,6 +339,9 @@ testCheckDuplicatedName = putStrLn (showChecked (checkDuplicatedNames program))
 
 testCheckNonDeclared :: IO ()
 testCheckNonDeclared = putStrLn (showChecked (checkNonDeclaredNames program))
+
+testCheckTypes :: IO ()
+testCheckTypes = putStrLn (showChecked (checkTypes program2))
 
 testCheckProgram :: IO ()
 testCheckProgram = putStrLn (showChecked (checkProgram program))

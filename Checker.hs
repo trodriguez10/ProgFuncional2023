@@ -206,7 +206,7 @@ checkValidFun :: FunDef -> [Error]
 checkValidFun (FunDef (name, sig) names expr) = 
   let env = zip names (getSigTypes sig) 
       retTypeError = if isIntegerType (getSigRetType sig) == isIntegerExpr env expr then [] else (if isIntegerType (getSigRetType sig) then [Expected TyInt TyBool] else [Expected TyBool TyInt])
-      exprErrors = checkValidExpr [] expr
+      exprErrors = checkValidExpr env expr
   in exprErrors ++ retTypeError
 
 isIntegerType :: Type -> Bool
@@ -228,13 +228,8 @@ isIntegerVar env name =
   let correspondingEnvVar = filter ((==) name .  getVarName) env -- Asumimos que no es vacio porque fue checkeado en la etapa de checkNonDelcared
   in isIntegerType (getVarType (head correspondingEnvVar))
 
--- CAMBIAR PARA NO REPETIR CODIGO
 isIntegerOp :: Op -> Bool
-isIntegerOp Add = True
-isIntegerOp Sub = True
-isIntegerOp Mult = True  
-isIntegerOp Div = True  
-isIntegerOp _ = False
+isIntegerOp = isArithmeticOp
 
 checkValidExpr :: Env -> Expr -> [Error]
 checkValidExpr _ (Var _) = [] -- El parser no permite meter un algo que no sea un String/Name en un Var

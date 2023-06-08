@@ -204,7 +204,7 @@ checkTypes (Program defs expr) =
 
 checkValidFun :: FunDef -> [Error]
 checkValidFun (FunDef (name, sig) names expr) = 
-  let env = zip names (getSigTypes sig)
+  let env = zip names (getSigTypes sig) 
       retTypeError = if isIntegerType (getSigRetType sig) == isIntegerExpr env expr then [] else (if isIntegerType (getSigRetType sig) then [Expected TyInt TyBool] else [Expected TyBool TyInt])
       exprErrors = checkValidExpr [] expr
   in exprErrors ++ retTypeError
@@ -225,7 +225,7 @@ isIntegerExpr env (App name xs) = undefined
 
 isIntegerVar :: Env -> Name -> Bool
 isIntegerVar env name = 
-  let correspondingEnvVar = filter (elem name . getVarName) env -- Asumimos que no es vacio porque fue checkeado en la etapa de checkNonDelcared
+  let correspondingEnvVar = filter ((==) name .  getVarName) env -- Asumimos que no es vacio porque fue checkeado en la etapa de checkNonDelcared
   in isIntegerType (getVarType (head correspondingEnvVar))
 
 -- CAMBIAR PARA NO REPETIR CODIGO
@@ -314,7 +314,7 @@ myFunction3 = ("func3", Sig [] TyBool)
 -- lo otro son los nombres de variables de la funcion
 -- lo ultimo es lo que hace la funcion
 funDef1 :: FunDef
-funDef1 = FunDef myFunction1 ["x", "y"] (Var "x")
+funDef1 = FunDef myFunction1 ["x", "y"] (Infix Add (Var "x") (IntLit 3))
 
 funDef2 :: FunDef
 funDef2 = FunDef myFunction2 ["x", "y", "z"] (If (BoolLit True) (IntLit 5) (Var "func1"))-- ?
@@ -326,7 +326,7 @@ program :: Program
 program = Program [funDef1, funDef2, funDef3] (If (BoolLit False) (IntLit 5) (App "func1" [IntLit 3, BoolLit False]))
 
 program2 :: Program
-program2 = Program [] (If (BoolLit False) (Infix Add (IntLit 2) (IntLit 3)) (IntLit 4))
+program2 = Program [funDef1] (IntLit 3)
 
 -- Función para mostrar el resultado Checked
 showChecked :: Checked -> String

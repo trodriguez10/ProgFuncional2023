@@ -17,6 +17,8 @@ import Syntax
 import Data.List
 import Data.Maybe
 
+import Debug.Trace (trace)
+
 -- CHECKER
 
 data Checked = Ok | Wrong [Error]
@@ -148,7 +150,7 @@ checkFunParams (FunDef typedFun args _) =
 checkNonDeclaredNames :: Program -> Checked
 checkNonDeclaredNames (Program defs expr) =
   let declaredFunNames = getFunNames defs
-      undefinedNamesInFuns = concatMap (getUndefinedNamesInFun declaredFunNames) defs 
+      undefinedNamesInFuns = concatMap (getUndefinedNamesInFun declaredFunNames) defs
       mainUsedNames = getUsedNames expr
       undefinedMainNames = filter (`notElem` declaredFunNames) mainUsedNames
       undefinedNames = undefinedNamesInFuns ++ undefinedMainNames
@@ -157,7 +159,7 @@ checkNonDeclaredNames (Program defs expr) =
      else Wrong (map Undefined undefinedNames)
 
 getUndefinedNamesInFun :: [Name] -> FunDef -> [Name]
-getUndefinedNamesInFun declaredFunNames (FunDef _ funVarNames expr) = 
+getUndefinedNamesInFun declaredFunNames (FunDef _ funVarNames expr) =
   let usedNames = getUsedNames expr
       availableNames = declaredFunNames ++ funVarNames
   in filter (`notElem` availableNames) usedNames
@@ -196,18 +198,18 @@ getUsedNames (App name exprs) = [name] ++ concatMap getUsedNames exprs
 checkTypes :: Program -> Checked
 checkTypes (Program defs expr) =
   let defsErrors = concatMap checkValidFun defs
-      mainErrors = checkValidExpr [] expr
-      allErrors = defsErrors ++ mainErrors
+      allErrors = defsErrors
   in if null allErrors
      then Ok
-     else Wrong allErrors
+     else  trace ("AllErrors: " ++ show allErrors++ "\n") (Wrong allErrors)
 
 checkValidFun :: FunDef -> [Error]
-checkValidFun (FunDef (name, sig) names expr) = 
-  let env = zip names (getSigTypes sig) 
+checkValidFun (FunDef (name, sig) names expr) =
+  let env = zip names (getSigTypes sig)
       retTypeError = if isIntegerType (getSigRetType sig) == isIntegerExpr env expr then [] else (if isIntegerType (getSigRetType sig) then [Expected TyInt TyBool] else [Expected TyBool TyInt])
-      exprErrors = checkValidExpr [] expr
-  in exprErrors ++ retTypeError
+      exprErrors = checkValidExpr env expr
+  in
+     trace ("ENNNNVV: " ++ show env++ "\n") (exprErrors ++ retTypeError)
 
 isIntegerType :: Type -> Bool
 isIntegerType TyInt = True
@@ -215,25 +217,37 @@ isIntegerType TyBool = False
 
 -- OJO CON EL OP, ESTA BIEN NO CONSIDERAR LOS EXPR??
 isIntegerExpr :: Env -> Expr -> Bool
-isIntegerExpr env (Var name) = isIntegerVar env name
+isIntegerExpr env (Var name) = trace ("VAR: " ++ "\n") (isIntegerVar env name  )
 isIntegerExpr _ (IntLit  _) = True
 isIntegerExpr _ (BoolLit _) = False
-isIntegerExpr _ (Infix op _ _) = isIntegerOp op
-isIntegerExpr env (If _ expr _) = isIntegerExpr env expr -- Asumimos que el tipo de retorno de un if es la primer expresion
+isIntegerExpr _ (Infix op _ _) = trace ("INFIX: " ++ "\n") (isIntegerOp op)
+isIntegerExpr env (If _ expr _) = trace ("IF\n") (isIntegerExpr env expr) -- Asumimos que el tipo de retorno de un if es la primer expresion
 isIntegerExpr env (Let (name, sig) expr expr') = undefined
 isIntegerExpr env (App name xs) = undefined
 
+
+convertirVar :: (Name, Type) -> TypedVar
+convertirVar (b, i) = (b, i)
+
+-- Función para convertir una lista de (Bool, Int) a una lista de TypedVar
+convertirLista :: [(Name, Type)] -> [TypedVar]
+convertirLista lista = map convertirVar lista
+
 isIntegerVar :: Env -> Name -> Bool
-isIntegerVar env name = 
-  let correspondingEnvVar = filter ((==) name .  getVarName) env -- Asumimos que no es vacio porque fue checkeado en la etapa de checkNonDelcared
-  in isIntegerType (getVarType (head correspondingEnvVar))
+isIntegerVar env name =
+  let
+    cleanList = convertirLista env
+    correspondingEnvVar = filter ((==) name .  getVarName) cleanList -- Asumimos que no es vacio porque fue checkeado en la etapa de checkNonDelcared
+  in
+    trace ("correspondingEnvVar: " ++ show correspondingEnvVar ++ "\n"
+          ++ "Env: " ++ show cleanList) (not (null correspondingEnvVar))
 
 -- CAMBIAR PARA NO REPETIR CODIGO
 isIntegerOp :: Op -> Bool
 isIntegerOp Add = True
 isIntegerOp Sub = True
-isIntegerOp Mult = True  
-isIntegerOp Div = True  
+isIntegerOp Mult = True
+isIntegerOp Div = True
 isIntegerOp _ = False
 
 checkValidExpr :: Env -> Expr -> [Error]
@@ -258,16 +272,16 @@ checkInfix env op expr expr'
         opError = checkSameTypeExpr env expr expr'
     in opError ++ expr1Errors ++ expr2Errors
   where isArithmetic = isArithmeticOp op
-  
+
 checkIf :: Env -> Expr -> Expr -> Expr -> [Error]
-checkIf env condExpr expr expr' = 
+checkIf env condExpr expr expr' =
   let expr1Errors = checkValidExpr env condExpr
       condChecked = if isIntegerExpr env condExpr then [Expected TyBool TyInt] else []
       expr2Errors = checkValidExpr env expr
       expr3Errors = checkValidExpr env expr'
       matchError =  checkSameTypeExpr env expr expr'
   in expr1Errors ++ condChecked ++ expr2Errors ++ expr3Errors ++ matchError
-  
+
 checkSameTypeExpr :: Env -> Expr -> Expr -> [Error]
 checkSameTypeExpr env expr expr' = if isIntegerExpr env expr == isIntegerExpr env expr' then [] else (if isIntegerExpr env expr then [Expected TyInt TyBool] else [Expected TyBool TyInt])
 
@@ -287,7 +301,7 @@ checkProgram program =
       case checkParamNum program of
         Ok ->
           case checkNonDeclaredNames program of
-            Ok -> 
+            Ok ->
               case checkTypes program of
                 Ok -> Ok
                 Wrong errors -> Wrong (getErrors (checkTypes program))
@@ -313,6 +327,8 @@ myFunction3 = ("func3", Sig [] TyBool)
 -- myFunction tiene la declaracion de la funxion,
 -- lo otro son los nombres de variables de la funcion
 -- lo ultimo es lo que hace la funcion
+
+-- SI MANDO ESTO, TIRA EXPECTED INT ACTUAL BOOL
 funDef1 :: FunDef
 funDef1 = FunDef myFunction1 ["x", "y"] (Infix Add (Var "x") (IntLit 3))
 
@@ -348,6 +364,32 @@ testCheckTypes = putStrLn (showChecked (checkTypes program2))
 
 testCheckProgram :: Program -> IO ()
 testCheckProgram p = putStrLn (showChecked (checkProgram p))
+
+testCheckLista :: Program -> IO ()
+testCheckLista (Program defs expr) =
+   let defsErrors = concatMap getTypedVarsFromFundefs defs
+       trying =  head $ filter ((==) "x" .  getVarName) defsErrors
+   in print  trying
+
+
+getTypedVarsFromFundefs :: FunDef -> [TypedVar]
+getTypedVarsFromFundefs (FunDef (name, sig) names expr) = zip names (getSigTypes sig)
+
+
+-- OJO CON EL OP, ESTA BIEN NO CONSIDERAR LOS EXPR??
+-- isIntegerExpr :: Env -> Expr -> Bool
+-- isIntegerExpr env (Var name) = isIntegerVar env name
+-- isIntegerExpr _ (IntLit  _) = True
+-- isIntegerExpr _ (BoolLit _) = False
+-- isIntegerExpr _ (Infix op _ _) = isIntegerOp op
+-- isIntegerExpr env (If _ expr _) = isIntegerExpr env expr -- Asumimos que el tipo de retorno de un if es la primer expresion
+-- isIntegerExpr env (Let (name, sig) expr expr') = undefined
+-- isIntegerExpr env (App name xs) = undefined
+
+-- isIntegerVar :: Env -> Name -> Bool
+-- isIntegerVar env name =
+--   let correspondingEnvVar = filter ((==) name .  getVarName) env -- Asumimos que no es vacio porque fue checkeado en la etapa de checkNonDelcared
+--   in isIntegerType (getVarType (head correspondingEnvVar))
 
 -- tests fallan cunado declaro dos varaibles ( FALTA IMPLEMENETAR ESO )
 

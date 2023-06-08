@@ -148,7 +148,7 @@ checkFunParams (FunDef typedFun args _) =
 checkNonDeclaredNames :: Program -> Checked
 checkNonDeclaredNames (Program defs expr) =
   let declaredFunNames = getFunNames defs
-      undefinedNamesInFuns = concatMap (getUndefinedNamesInFun declaredFunNames) defs 
+      undefinedNamesInFuns = concatMap (getUndefinedNamesInFun declaredFunNames) defs
       mainUsedNames = getUsedNames expr
       undefinedMainNames = filter (`notElem` declaredFunNames) mainUsedNames
       undefinedNames = undefinedNamesInFuns ++ undefinedMainNames
@@ -157,7 +157,7 @@ checkNonDeclaredNames (Program defs expr) =
      else Wrong (map Undefined undefinedNames)
 
 getUndefinedNamesInFun :: [Name] -> FunDef -> [Name]
-getUndefinedNamesInFun declaredFunNames (FunDef _ funVarNames expr) = 
+getUndefinedNamesInFun declaredFunNames (FunDef _ funVarNames expr) =
   let usedNames = getUsedNames expr
       availableNames = declaredFunNames ++ funVarNames
   in filter (`notElem` availableNames) usedNames
@@ -203,10 +203,10 @@ checkTypes (Program defs expr) =
      else Wrong allErrors
 
 checkValidFun :: FunDef -> [Error]
-checkValidFun (FunDef (name, sig) names expr) = 
-  let env = zip names (getSigTypes sig) 
+checkValidFun (FunDef (name, sig) names expr) =
+  let env = zip names (getSigTypes sig)
       retTypeError = if isIntegerType (getSigRetType sig) == isIntegerExpr env expr then [] else (if isIntegerType (getSigRetType sig) then [Expected TyInt TyBool] else [Expected TyBool TyInt])
-      exprErrors = checkValidExpr [] expr
+      exprErrors = checkValidExpr env expr
   in exprErrors ++ retTypeError
 
 isIntegerType :: Type -> Bool
@@ -224,7 +224,7 @@ isIntegerExpr env (Let (name, sig) expr expr') = undefined
 isIntegerExpr env (App name xs) = undefined
 
 isIntegerVar :: Env -> Name -> Bool
-isIntegerVar env name = 
+isIntegerVar env name =
   let correspondingEnvVar = filter ((==) name .  getVarName) env -- Asumimos que no es vacio porque fue checkeado en la etapa de checkNonDelcared
   in isIntegerType (getVarType (head correspondingEnvVar))
 
@@ -232,8 +232,8 @@ isIntegerVar env name =
 isIntegerOp :: Op -> Bool
 isIntegerOp Add = True
 isIntegerOp Sub = True
-isIntegerOp Mult = True  
-isIntegerOp Div = True  
+isIntegerOp Mult = True
+isIntegerOp Div = True
 isIntegerOp _ = False
 
 checkValidExpr :: Env -> Expr -> [Error]
@@ -258,16 +258,16 @@ checkInfix env op expr expr'
         opError = checkSameTypeExpr env expr expr'
     in opError ++ expr1Errors ++ expr2Errors
   where isArithmetic = isArithmeticOp op
-  
+
 checkIf :: Env -> Expr -> Expr -> Expr -> [Error]
-checkIf env condExpr expr expr' = 
+checkIf env condExpr expr expr' =
   let expr1Errors = checkValidExpr env condExpr
       condChecked = if isIntegerExpr env condExpr then [Expected TyBool TyInt] else []
       expr2Errors = checkValidExpr env expr
       expr3Errors = checkValidExpr env expr'
       matchError =  checkSameTypeExpr env expr expr'
   in expr1Errors ++ condChecked ++ expr2Errors ++ expr3Errors ++ matchError
-  
+
 checkSameTypeExpr :: Env -> Expr -> Expr -> [Error]
 checkSameTypeExpr env expr expr' = if isIntegerExpr env expr == isIntegerExpr env expr' then [] else (if isIntegerExpr env expr then [Expected TyInt TyBool] else [Expected TyBool TyInt])
 
@@ -287,7 +287,7 @@ checkProgram program =
       case checkParamNum program of
         Ok ->
           case checkNonDeclaredNames program of
-            Ok -> 
+            Ok ->
               case checkTypes program of
                 Ok -> Ok
                 Wrong errors -> Wrong (getErrors (checkTypes program))
@@ -305,7 +305,7 @@ myFunction1 :: TypedFun
 myFunction1 = ("func1", Sig [TyInt, TyBool] TyInt)
 
 myFunction2 :: TypedFun
-myFunction2 = ("func2", Sig [TyBool, TyBool, TyInt] TyBool)
+myFunction2 = ("func2", Sig [TyBool, TyInt, TyInt] TyBool)
 
 myFunction3 :: TypedFun
 myFunction3 = ("func3", Sig [] TyBool)
@@ -317,7 +317,7 @@ funDef1 :: FunDef
 funDef1 = FunDef myFunction1 ["x", "y"] (Infix Add (Var "x") (IntLit 3))
 
 funDef2 :: FunDef
-funDef2 = FunDef myFunction2 ["x", "y", "z"] (If (BoolLit True) (IntLit 5) (Var "func1"))-- ?
+funDef2 = FunDef myFunction2 ["x", "y", "z"]  (Infix Eq (Infix Eq (BoolLit False) (BoolLit True)) (BoolLit False))-- ?
 
 funDef3 :: FunDef
 funDef3 = FunDef myFunction3 [] (BoolLit True)
@@ -326,7 +326,7 @@ program :: Program
 program = Program [funDef1, funDef2, funDef3] (If (BoolLit False) (IntLit 5) (App "func1" [IntLit 3, BoolLit False]))
 
 program2 :: Program
-program2 = Program [funDef1] (IntLit 3)
+program2 = Program [funDef1, funDef2] (IntLit 3)
 
 -- Función para mostrar el resultado Checked
 showChecked :: Checked -> String

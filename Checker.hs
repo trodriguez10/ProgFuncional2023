@@ -194,32 +194,34 @@ getUsedNames (App name exprs) = [name] ++ concatMap getUsedNames exprs
 
 checkTypes :: Program -> Checked
 checkTypes (Program defs expr) =
-  let defsErrors = concatMap checkValidFun defs
-      mainErrors = checkValidExpr [] expr
+  let defsErrors = concatMap (checkValidFun defs) defs
+      mainErrors = checkValidExpr defs [] expr
       allErrors = defsErrors ++ mainErrors
   in if null allErrors
      then Ok
      else Wrong allErrors
 
-checkValidFun :: FunDef -> [Error]
-checkValidFun (FunDef (name, sig) names expr) =
+checkValidFun :: [FunDef] -> FunDef -> [Error]
+checkValidFun defs (FunDef (name, sig) names expr) =
   let env = zip names (getSigTypes sig)
-      retTypeError = if isIntegerType (getSigRetType sig) == isIntegerExpr env expr then [] else (if isIntegerType (getSigRetType sig) then [Expected TyInt TyBool] else [Expected TyBool TyInt])
-      exprErrors = checkValidExpr env expr
+      retTypeError = if isIntegerType (getSigRetType sig) == isIntegerExpr defs env expr then [] else (if isIntegerType (getSigRetType sig) then [Expected TyInt TyBool] else [Expected TyBool TyInt])
+      exprErrors = checkValidExpr defs env expr
   in exprErrors ++ retTypeError
 
 isIntegerType :: Type -> Bool
 isIntegerType TyInt = True
 isIntegerType TyBool = False
 
-isIntegerExpr :: Env -> Expr -> Bool
-isIntegerExpr env (Var name) = isIntegerVar env name
-isIntegerExpr _ (IntLit  _) = True
-isIntegerExpr _ (BoolLit _) = False
-isIntegerExpr _ (Infix op _ _) = isIntegerOp op -- Asumimos que el tipo de una operacion esta dado por la operacion y no por sus valores
-isIntegerExpr env (If _ expr _) = isIntegerExpr env expr -- Asumimos que el tipo de retorno de un if es la primer expresion
-isIntegerExpr env (Let (name, varType) expr expr') = isIntegerExpr (updateEnv env name varType) expr' -- El tipo de reotrno es el tipo de la expr' actualizando el env con la nueva variable
-isIntegerExpr env (App name xs) = undefined
+isIntegerExpr :: [FunDef] -> Env -> Expr -> Bool
+isIntegerExpr _ env (Var name) = isIntegerVar env name
+isIntegerExpr _ _ (IntLit  _) = True
+isIntegerExpr _ _ (BoolLit _) = False
+isIntegerExpr _ _ (Infix op _ _) = isIntegerOp op -- Asumimos que el tipo de una operacion esta dado por la operacion y no por sus valores
+isIntegerExpr defs env (If _ expr _) = isIntegerExpr defs env expr -- Asumimos que el tipo de retorno de un if es la primer expresion
+isIntegerExpr defs env (Let (name, varType) expr expr') = isIntegerExpr defs (updateEnv env name varType) expr' -- El tipo de reotrno es el tipo de la expr' actualizando el env con la nueva variable
+isIntegerExpr defs env (App funName xs) = 
+  let correspondingFun = filter ((==) funName . getFunTypeName . getFunDefTypedFun) defs -- Asumimos que no es vacio porque fue checkeado en la etapa de checkNonDelcared
+  in isIntegerType ((getSigRetType . getFunSig . getFunDefTypedFun) (head correspondingFun))
 
 isIntegerVar :: Env -> Name -> Bool
 isIntegerVar env name =
@@ -229,53 +231,63 @@ isIntegerVar env name =
 isIntegerOp :: Op -> Bool
 isIntegerOp = isArithmeticOp
 
-checkValidExpr :: Env -> Expr -> [Error]
-checkValidExpr _ (Var _) = [] -- El parser no permite meter un algo que no sea un String/Name en un Var
-checkValidExpr _ (IntLit _) = [] -- El parser no permite meter un Bool en un IntLit por definicion
-checkValidExpr _ (BoolLit _) = [] -- El parser no permite meter un Integer en un BoolLit por definicion
-checkValidExpr env (Infix op expr expr') = checkInfix env op expr expr'
-checkValidExpr env (If condExpr expr expr') = checkIf env condExpr expr expr'
-checkValidExpr env (Let (name, varType) expr expr') = checkLet env name varType expr expr'
-checkValidExpr env (App name xs) = undefined
+checkValidExpr :: [FunDef] -> Env -> Expr -> [Error]
+checkValidExpr _ _ (Var _) = [] -- El parser no permite meter un algo que no sea un String/Name en un Var
+checkValidExpr _ _ (IntLit _) = [] -- El parser no permite meter un Bool en un IntLit por definicion
+checkValidExpr _ _ (BoolLit _) = [] -- El parser no permite meter un Integer en un BoolLit por definicion
+checkValidExpr defs env (Infix op expr expr') = checkInfix defs env op expr expr'
+checkValidExpr defs env (If condExpr expr expr') = checkIf defs env condExpr expr expr'
+checkValidExpr defs env (Let (name, varType) expr expr') = checkLet defs env name varType expr expr'
+checkValidExpr defs env (App funName xs) = checkApp defs env funName xs
 
-checkInfix :: Env -> Op -> Expr -> Expr -> [Error]
-checkInfix env op expr expr'
+checkInfix :: [FunDef] -> Env -> Op -> Expr -> Expr -> [Error]
+checkInfix defs env op expr expr'
   | isArithmetic == True =
-    let expr1Errors = checkValidExpr env expr
-        expr2Errors = checkValidExpr env expr'
-        opError = if isIntegerExpr env expr && isIntegerExpr env expr' then [] else (if isIntegerExpr env expr then [Expected TyInt TyBool] else (if isIntegerExpr env expr' then [Expected TyInt TyBool] else [Expected TyInt TyBool, Expected TyInt TyBool]))
+    let expr1Errors = checkValidExpr defs env expr
+        expr2Errors = checkValidExpr defs env expr'
+        opError = if isIntegerExpr defs env expr && isIntegerExpr defs env expr' then [] else (if isIntegerExpr defs env expr then [Expected TyInt TyBool] else (if isIntegerExpr defs env expr' then [Expected TyInt TyBool] else [Expected TyInt TyBool, Expected TyInt TyBool]))
     in opError ++ expr1Errors ++ expr2Errors
   | otherwise =
-    let expr1Errors = checkValidExpr env expr
-        expr2Errors = checkValidExpr env expr'
-        opError = checkSameTypeExpr env expr expr'
+    let expr1Errors = checkValidExpr defs env expr
+        expr2Errors = checkValidExpr defs env expr'
+        opError = checkSameTypeExpr defs env expr expr'
     in opError ++ expr1Errors ++ expr2Errors
   where isArithmetic = isArithmeticOp op
 
-checkIf :: Env -> Expr -> Expr -> Expr -> [Error]
-checkIf env condExpr expr expr' =
-  let expr1Errors = checkValidExpr env condExpr
-      condChecked = if isIntegerExpr env condExpr then [Expected TyBool TyInt] else []
-      expr2Errors = checkValidExpr env expr
-      expr3Errors = checkValidExpr env expr'
-      matchError =  checkSameTypeExpr env expr expr'
+checkIf :: [FunDef] -> Env -> Expr -> Expr -> Expr -> [Error]
+checkIf defs env condExpr expr expr' =
+  let expr1Errors = checkValidExpr defs env condExpr
+      condChecked = if isIntegerExpr defs env condExpr then [Expected TyBool TyInt] else []
+      expr2Errors = checkValidExpr defs env expr
+      expr3Errors = checkValidExpr defs env expr'
+      matchError =  checkSameTypeExpr defs env expr expr'
   in expr1Errors ++ condChecked ++ expr2Errors ++ expr3Errors ++ matchError
 
-checkSameTypeExpr :: Env -> Expr -> Expr -> [Error]
-checkSameTypeExpr env expr expr' = if isIntegerExpr env expr == isIntegerExpr env expr' then [] else (if isIntegerExpr env expr then [Expected TyInt TyBool] else [Expected TyBool TyInt])
+checkSameTypeExpr :: [FunDef] -> Env -> Expr -> Expr -> [Error]
+checkSameTypeExpr defs env expr expr' = if isIntegerExpr defs env expr == isIntegerExpr defs env expr' then [] else (if isIntegerExpr defs env expr then [Expected TyInt TyBool] else [Expected TyBool TyInt])
 
-checkLet :: Env -> Name -> Type -> Expr -> Expr -> [Error]
-checkLet env name varType expr expr' =
-  let exprErrors = checkValidExpr env expr
-      letErrors = checkSameTypeExpr' env varType expr
-      expr'Errors = checkValidExpr (updateEnv env name varType) expr'
+checkLet :: [FunDef] -> Env -> Name -> Type -> Expr -> Expr -> [Error]
+checkLet defs env name varType expr expr' =
+  let exprErrors = checkValidExpr defs env expr
+      letErrors = checkSameTypeExpr' defs env varType expr
+      expr'Errors = checkValidExpr defs (updateEnv env name varType) expr'
   in exprErrors ++ letErrors ++ expr'Errors 
 
-checkSameTypeExpr' :: Env -> Type -> Expr -> [Error]
-checkSameTypeExpr' env varType expr = if isIntegerType varType == isIntegerExpr env expr then [] else (if isIntegerType varType then [Expected TyInt TyBool] else [Expected TyBool TyInt])
+checkSameTypeExpr' :: [FunDef] -> Env -> Type -> Expr -> [Error]
+checkSameTypeExpr' defs env varType expr = if isIntegerType varType == isIntegerExpr defs env expr then [] else (if isIntegerType varType then [Expected TyInt TyBool] else [Expected TyBool TyInt])
 
 updateEnv :: Env -> Name -> Type -> Env
 updateEnv env name varType = (name, varType) : (filter ((/=) name .  getVarName) env)
+
+checkApp :: [FunDef] -> Env -> Name -> [Expr] -> [Error]
+checkApp defs env funName exprs =
+  let correspondingFun = filter ((==) funName . getFunTypeName . getFunDefTypedFun) defs -- Asumimos que no es vacio porque fue checkeado en la etapa de checkNonDelcared
+      funParamsTypes = (getSigParams . getFunDefTypedFun) (head correspondingFun)
+      appError = if length funParamsTypes == length exprs then [] else [ArgNumApp funName (length funParamsTypes) (length exprs)]
+      pairs = zip funParamsTypes exprs
+      paramsErrors = concatMap (\(funParamType, expr) -> checkSameTypeExpr' defs env funParamType expr) pairs
+      exprsErrors = concatMap (checkValidExpr defs env) exprs
+  in appError ++ paramsErrors ++ exprsErrors
 
 getErrorsList :: [Checked] -> [Error]
 getErrorsList [] = []
@@ -323,7 +335,7 @@ funDef1 :: FunDef
 funDef1 = FunDef myFunction1 ["x", "y"] (Infix Add (Var "x") (IntLit 3))
 
 funDef2 :: FunDef
-funDef2 = FunDef myFunction2 ["x", "y", "z"]  (Infix Eq (Infix Eq (BoolLit False) (BoolLit True)) (BoolLit False))-- ?
+funDef2 = FunDef myFunction2 ["x", "y", "z"]  (Infix Eq (Infix Eq (BoolLit False) (BoolLit True)) (BoolLit False))
 
 funDef3 :: FunDef
 funDef3 = FunDef myFunction3 [] (BoolLit True)

@@ -228,13 +228,8 @@ isIntegerVar env name =
   let correspondingEnvVar = filter ((==) name .  getVarName) env -- Asumimos que no es vacio porque fue checkeado en la etapa de checkNonDelcared
   in isIntegerType (getVarType (head correspondingEnvVar))
 
--- CAMBIAR PARA NO REPETIR CODIGO
 isIntegerOp :: Op -> Bool
-isIntegerOp Add = True
-isIntegerOp Sub = True
-isIntegerOp Mult = True
-isIntegerOp Div = True
-isIntegerOp _ = False
+isIntegerOp = isArithmeticOp
 
 checkValidExpr :: Env -> Expr -> [Error]
 checkValidExpr _ (Var _) = [] -- El parser no permite meter un algo que no sea un String/Name en un Var

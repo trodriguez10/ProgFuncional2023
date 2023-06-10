@@ -22,17 +22,35 @@ letElimDef :: FunDef -> FunDef
 letElimDef (FunDef typedFun names expr) = FunDef typedFun names (letElimExpr expr)
 
 letElimExpr :: Expr -> Expr
-letElimExpr (Var name) = (Var name)  -- capaz llevar a expr al fondo y devolver expr nomas => PATTERN MATCHING
-letElimExpr expr@(IntLit _) = expr -- Dos de las sintaxis validas para esta parte
-letElimExpr expr@(BoolLit _) = expr
 letElimExpr (Infix op expr expr') = Infix op (letElimExpr expr) (letElimExpr expr')
 letElimExpr (If condExpr expr expr') = If (letElimExpr condExpr) (letElimExpr expr) (letElimExpr expr')
-letElimExpr (Let (name, _) expr expr') =
-  let substExpr = subst name expr expr' -- Chequear Free variables
-  in letElimExpr substExpr -- lo puse asi por que seguramente haya que hacer algo mas, si no, nos podemos ahorrar el let in
+letElimExpr (Let (name, varType) expr expr') =
+  let isLiteral = checkLiteral expr
+  in if isLiteral
+     then letElimExpr (subst name (letElimExpr expr) expr')
+     else Let (name, varType) (letElimExpr expr) (letElimExpr expr')
 letElimExpr (App name args) = App name (map letElimExpr args)
+letElimExpr expr = expr
 
+checkLiteral :: Expr -> Bool
+checkLiteral (IntLit _) = True
+checkLiteral (BoolLit _) = True
+checkLiteral (Let (name, _) expr expr') = checkLiteral expr && isVar name expr'
+checkLiteral _ = False
 
--- CHEQUEAR LO DE VARIABLES LIGADAS
+isVar :: Name -> Expr -> Bool
+isVar name (Var name') = name == name'
+isVar name (Let (name', _) expr expr') = isVar name expr && isVar name' expr'
+isVar _ _ = False
+
 subst :: Name -> Expr -> Expr -> Expr
-subst = undefined
+subst name expr (Var name') = if name == name' then expr else (Var name')
+subst name expr (Infix op expr' expr'') = Infix op (subst name expr expr') (subst name expr expr'')
+subst name expr (If condExpr expr' expr'') = If (subst name expr condExpr) (subst name expr expr') (subst name expr expr'')
+subst name expr (Let (name', varType) expr' expr'') = 
+  let bodyExpr = if name == name' then expr'' else subst name expr expr''
+  in Let (name', varType) (subst name expr expr') bodyExpr
+subst name expr (App name' args) = App name' (map (subst name expr) args)
+subst _ _ expr' = expr'
+
+

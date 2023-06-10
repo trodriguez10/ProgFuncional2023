@@ -324,6 +324,23 @@ program = Program [funDef1, funDef2, funDef3] (If (BoolLit False) (IntLit 5) (Ap
 program2 :: Program
 program2 = Program [funDef1, funDef2] (Let ("x", TyBool) (Infix Eq (BoolLit False) (BoolLit True)) (Infix Eq (Var "x") (BoolLit True)))
 
+program2_1 :: Program
+program2_1 = Program [(FunDef ("f", Sig [TyInt, TyInt, TyInt, TyInt] TyInt) ["x", "y", "x", "x"] (Var "x")), 
+                      (FunDef ("g", Sig [TyInt, TyInt, TyInt, TyInt, TyInt] TyInt) ["x", "y", "z", "z", "x"] (Infix Add (Infix Add (Var "x") (Var "y")) (Var "z"))),
+                      (FunDef ("f", Sig [TyInt] TyInt) ["x"] (Var "x")),
+                      (FunDef ("f", Sig [TyInt, TyInt] TyInt) ["s", "s"] (Var "s")),
+                      (FunDef ("g", Sig [TyInt] TyInt) ["x"] (Infix Mult (Var "x") (Var "z")))] (App "f" [(IntLit 2)])
+
+program2_2 :: Program
+program2_2 = Program [(FunDef ("f", Sig [TyInt] TyInt) ["x", "y"] (Infix Add (Var "x") (Var "y")))] (App "f" [(IntLit 4)])
+
+program2_3 :: Program
+program2_3 = Program [(FunDef ("f", Sig [TyInt] TyInt) ["x"] (Infix Add (Infix Add (Var "x") (Var "z")) (App "g" [(Var "s")])))] (App "h" [(Var "x")])
+
+program2_4 :: Program
+program2_4 = Program [(FunDef ("f", Sig [TyInt, TyInt] TyInt) ["x", "y"] (If (Var "x") (Infix Add (Var "x") (Var "y")) (Infix Eq (Var "x") (BoolLit True))))] (Infix Eq (BoolLit False) (App "f" [(BoolLit True), (Infix Add (IntLit 2) (Infix Mult (BoolLit True) (IntLit 4))), (IntLit 5)]))
+
+
 -- Función para mostrar el resultado Checked
 showChecked :: Checked -> String
 showChecked Ok = "Ok"

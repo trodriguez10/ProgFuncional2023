@@ -76,69 +76,111 @@ Luego, siempre int main () {
 
 genProgram :: Program -> String
 genProgram (Program defs expr) =
+  let header = ["#include <stdio.h>"]
+      funcDefs = concatMap parseFunDefToC defs
+      mainExpr = parseMainToC expr
+  in if null funcDefs 
+     then unlines (header ++ mainExpr)
+     else unlines (header ++ funcDefs ++ mainExpr)
+
+right :: Either a b -> b
+right (Right x) = x
+
+parseMainToC :: Expr -> [String]
+parseMainToC expr = 
+  let letDefs = parseLetFunDefs 0 expr
+  in if null letDefs
+     then ["int main() {"] ++ ["printf(\"%d\\n\"," ++ parseExprToC 0 expr ++ "); }"]
+     else ["int main() {"] ++ letDefs ++ ["printf(\"%d\\n\"," ++ parseExprToC 0 expr ++ "); }"]
+
+parseFunDefToC :: FunDef -> [String]
+parseFunDefToC (FunDef (name, sig) names expr) =
   let
-    header = getCHeader
-    funcDefs = map parseFunDefToC defs
-    mainExpr = undefined -- chequeo del main
-  in header ++ funcDefs ++ mainExpr
+    funcRetTypeAndName = parseFunctionSignatureToC (name, sig)
+    funcVarDeclarations = joinWithComma $ parseFunctionVariablesToC names
+    letDefs = parseLetFunDefs 0 expr
+    funcBody = parseExprToC 0 expr
+  in if null letDefs
+     then [funcRetTypeAndName ++ "(" ++ funcVarDeclarations ++ ")" ++ "{"] ++ ["return (" ++ funcBody ++ "); };"]
+     else [funcRetTypeAndName ++ "(" ++ funcVarDeclarations ++ ")" ++ "{"] ++ letDefs ++ ["return (" ++ funcBody ++ "); };"]
 
+parseFunctionSignatureToC :: TypedFun -> String
+parseFunctionSignatureToC (name, _) = "int" ++ " _" ++ name
 
---  FunDef TypedFun [Name]  Expr
--- Sig [Type] Type -- Typos de entrada y de salida
+parseFunctionVariablesToC :: [Name] -> [String]
+parseFunctionVariablesToC names = map (\name -> "int _" ++ name) names
 
--- Definir Chequeo de EXpresion => CADA FUNCION debe seguir la estructura mostrada arriba
--- Es probable que sea [String]
-parseFunDefToC :: FunDef -> String
-parseFunDefToC (FunDef typedFun@(name, sig) names expr) =
-  let
-    funcBody = translateExprToC expr
-    funcRetTypeAndName = getFunctionSignature typedFun
-    funcVarDeclarations = signatureVariables sig names
-  in funcRetTypeAndName ++ " " ++ funcVarDeclarations ++ " {\n" ++ funcBody -- falta return y cerrar }
+joinWithComma :: [String] -> String
+joinWithComma = intercalate ","
 
-getFunctionSignature :: TypedFun -> String    -- definida en checker
-getFunctionSignature (name, sig) = getSigRetType sig ++ " _" ++ name
+parseLetFunDefs :: Int -> Expr -> [String]
+parseLetFunDefs numberLets (Infix op expr expr') = 
+  let exprLets = numberOfLets expr
+      newNumberLets = numberLets + exprLets
+  in parseLetFunDefs numberLets expr ++ parseLetFunDefs newNumberLets expr'
+parseLetFunDefs numberLets (If condExpr expr expr') = 
+  let condExprLets = numberOfLets condExpr
+      newNumberLets = numberLets + condExprLets
+      exprLets = numberOfLets expr
+      newNewNumberLets = newNumberLets + exprLets
+  in parseLetFunDefs numberLets condExpr ++ parseLetFunDefs newNumberLets expr ++ parseLetFunDefs newNewNumberLets expr'
+parseLetFunDefs numberLets (Let (name, _) expr expr') = 
+  let exprLets = numberOfLets expr
+      newNumberLets = numberLets + exprLets
+      expr'Lets = numberOfLets expr'
+      newNewNumberLets = newNumberLets + expr'Lets
+      letNumber = show newNewNumberLets
+      exprLetDefs = parseLetFunDefs numberLets expr
+      expr'LetDefs = parseLetFunDefs newNumberLets expr'
+  in if null expr'LetDefs
+     then if null exprLetDefs 
+          then ["int _let" ++ letNumber ++ "(int _" ++ name ++ "){"] ++ ["return (" ++ parseExprToC newNumberLets expr' ++ "); };"]
+          else exprLetDefs ++ ["int _let" ++ letNumber ++ "(int _" ++ name ++ "){"] ++ ["return (" ++ parseExprToC newNumberLets expr' ++ "); };"]
+     else if null exprLetDefs 
+          then ["int _let" ++ letNumber ++ "(int _" ++ name ++ "){"] ++ expr'LetDefs ++ ["return (" ++ parseExprToC newNumberLets expr' ++ "); };"]
+          else exprLetDefs ++ ["int _let" ++ letNumber ++ "(int _" ++ name ++ "){"] ++ expr'LetDefs ++ ["return (" ++ parseExprToC newNumberLets expr' ++ "); };"]
+parseLetFunDefs numberLets (App _ xs) = concatMap (\(x,y) -> parseLetFunDefs x y) $ zip (scanl (\newNumberLets expr -> (newNumberLets + numberOfLets expr)) numberLets xs) xs
+parseLetFunDefs _ _ = []
 
--- Zipear Signature y var names => Int x, Bool Y....
-signatureVariables :: Sig -> [Name] -> [String]
-signatureVariables sig names =
-  let structure = zip (getSigTypes sig) (names)
-  in map (\(sig, name)-> " " ++ translateTypeToCType sig ++ " _" ++ name  ++ " ") structure
+parseExprToC :: Int -> Expr -> String
+parseExprToC _ (Var name) = "_" ++ name
+parseExprToC _ (IntLit value) = show value
+parseExprToC _ (BoolLit False) = "0"
+parseExprToC _ (BoolLit True) = "1"
+parseExprToC numberLets (Infix op expr expr') = 
+  let exprLets = numberOfLets expr
+      newNumberLets = numberLets + exprLets
+  in "(" ++ parseExprToC numberLets expr ++ parseOperatorToC op ++ parseExprToC newNumberLets expr' ++ ")"
+parseExprToC numberLets (If condExpr expr expr') = 
+  let condExprLets = numberOfLets condExpr
+      newNumberLets = numberLets + condExprLets
+      exprLets = numberOfLets expr
+      newNewNumberLets = newNumberLets + exprLets
+  in parseExprToC numberLets condExpr ++ "?" ++ parseExprToC newNumberLets expr ++ ":" ++ parseExprToC newNewNumberLets expr'
+parseExprToC numberLets (Let _ expr expr') = 
+  let exprLets = numberOfLets expr
+      newNumberLets = numberLets + exprLets
+      expr'Lets = numberOfLets expr'
+      newNewNumberLets = newNumberLets + expr'Lets
+      letNumber = show newNewNumberLets
+  in "_let" ++ letNumber ++ "(" ++ parseExprToC numberLets expr ++ ")"
+parseExprToC numberLets (App funName xs) = "_" ++ funName ++ "(" ++ joinWithComma (map (\(x,y) -> parseExprToC x y) $ zip (scanl (\newNumberLets expr -> (newNumberLets + numberOfLets expr)) numberLets xs) xs) ++ ")"
 
--- puede ser concatMap enve de map
+numberOfLets :: Expr -> Int
+numberOfLets (Infix _ expr expr') = numberOfLets expr + numberOfLets expr'
+numberOfLets (If condExpr expr expr') = numberOfLets condExpr + numberOfLets expr + numberOfLets expr'
+numberOfLets (Let _ expr expr') = 1 + numberOfLets expr'
+numberOfLets (App _ exprs) = sum (map numberOfLets exprs)
+numberOfLets _ = 0
 
-getSigTypes :: Sig -> [Type]
-getSigTypes (Sig types _) = types
-
-getSigRetType :: Sig -> Type
-getSigRetType (Sig _ retType) = retType
-
-translateTypeToCType :: Type -> String
-translateTypeToCType (IntLit _) = "int"
-translateTypeToCType (BoolLit _) = "bool" -- No vi bools hasta ahora, capaz los 2 son ints
-
-
-translateExprToC :: Expr -> String
-translateExprToC (Var name) = "_" ++ name
-translateExprToC (IntLit _) = undefined
-translateExprToC (BoolLit False) = "0"
-translateExprToC (BoolLit True) = "1"
-translateExprToC (Infix op expr expr') = undefined
-translateExprToC (If condExpr expr expr') = undefined
-translateExprToC (Let (name, varType) expr expr') = undefined
-translateExprToC  (App funName xs) = undefined
-
-getCHeader :: String           -- Arma el header de C++
-getCHeader = "include < stdio .h > \n"
-
-opToCOperator :: Op -> String
-opToCOperator Add = "+"
-opToCOperator Sub = "-"
-opToCOperator Mult = "*"
-opToCOperator Div = "/"
-opToCOperator Eq = "=="
-opToCOperator NEq = "!="
-opToCOperator GTh = ">" -- puede estar dado vuelta
-opToCOperator LTh = "<" -- puede estar dado vuelta
-opToCOperator GEq = ">=" -- puede estar dado vuelta
-opToCOperator LEq = "<=" -- puede estar dado vuelta
+parseOperatorToC :: Op -> String
+parseOperatorToC Add = " + "
+parseOperatorToC Sub = " - "
+parseOperatorToC Mult = " * "
+parseOperatorToC Div = " / "
+parseOperatorToC Eq = "=="
+parseOperatorToC NEq = "!="
+parseOperatorToC GTh = ">"
+parseOperatorToC LTh = "<"
+parseOperatorToC GEq = ">="
+parseOperatorToC LEq = "<="

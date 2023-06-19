@@ -184,7 +184,7 @@ checkValidFun defs (FunDef (name, sig) names expr) =
   let env = zip names (getSigTypes sig)
       retTypeError = if isIntegerType (getSigRetType sig) == isIntegerExpr defs env expr then [] else (if isIntegerType (getSigRetType sig) then [Expected TyInt TyBool] else [Expected TyBool TyInt])
       exprErrors = checkValidExpr defs env expr
-  in exprErrors ++ retTypeError
+  in retTypeError ++ exprErrors
 
 isIntegerType :: Type -> Bool
 isIntegerType TyInt = True
@@ -239,7 +239,7 @@ checkIf defs env condExpr expr expr' =
       expr2Errors = checkValidExpr defs env expr
       expr3Errors = checkValidExpr defs env expr'
       matchError =  checkSameTypeExpr defs env expr expr'
-  in expr1Errors ++ condChecked ++ expr2Errors ++ expr3Errors ++ matchError
+  in condChecked ++ matchError ++ expr1Errors ++ expr2Errors ++ expr3Errors
 
 checkSameTypeExpr :: [FunDef] -> Env -> Expr -> Expr -> [Error]
 checkSameTypeExpr defs env expr expr' = if isIntegerExpr defs env expr == isIntegerExpr defs env expr' then [] else (if isIntegerExpr defs env expr then [Expected TyInt TyBool] else [Expected TyBool TyInt])
@@ -249,7 +249,7 @@ checkLet defs env name varType expr expr' =
   let exprErrors = checkValidExpr defs env expr
       letErrors = checkSameTypeExpr' defs env varType expr
       expr'Errors = checkValidExpr defs (updateEnv env name varType) expr'
-  in exprErrors ++ letErrors ++ expr'Errors 
+  in letErrors ++ exprErrors ++ expr'Errors 
 
 checkSameTypeExpr' :: [FunDef] -> Env -> Type -> Expr -> [Error]
 checkSameTypeExpr' defs env varType expr = if isIntegerType varType == isIntegerExpr defs env expr then [] else (if isIntegerType varType then [Expected TyInt TyBool] else [Expected TyBool TyInt])

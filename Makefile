@@ -11,7 +11,7 @@ tests : FORCE
 	for i in 1 2 3 4 5 6 7 8 9 10; \
          do runhaskell Compiler.hs localtests/ejemplo$$i; \
             runhaskell Compiler.hs -o localtests/ejemplo$$i; done
-	for i in 1 2 3 4; \
+	for i in 1 2 3 4 5 6 7; \
          do runhaskell Compiler.hs localtests/ejemplo$${i}err > \
             localtests/ejemplo$${i}err.err ; done
 
